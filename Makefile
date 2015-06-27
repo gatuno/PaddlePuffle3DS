@@ -34,6 +34,11 @@ INCLUDES	:=	include
 GRAPHICS	:=	gfx
 ALPHA_GRAPHICS := gfx/alpha
 
+APP_TITLE := Paddle Puffle
+APP_DESCRIPTION := Play paddle puffle
+APP_AUTHOR := Gatuno
+ICON := paddle.png
+
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
