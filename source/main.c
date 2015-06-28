@@ -146,13 +146,14 @@ typedef struct _Puffle {
 /* Prototipos de funciones */
 void setup (void);
 void nuevo_puffle (void);
+void eliminar_puffle (Puffle *p);
 
 /* Variables Globales */
 Puffle *first_puffle = NULL;
 Puffle *last_puffle = NULL;
 
 u8 *puffles_images[10][8];
-u8 *paddle_images[8];
+u8 *paddle_images[4];
 
 void gfxDrawSprite (gfxScreen_t screen, gfx3dSide_t side, u8* spriteData, u16 width, u16 height, s16 x, s16 y) {
 	if (!spriteData) return;
@@ -257,12 +258,8 @@ void game_loop (void) {
 	touchPosition touch, touch1;
 	nuevo_puffle ();
 	
-	paddle_x = paddle_x2 = paddle_x1 = 50;
-	paddle_y = paddle_y2 = paddle_y1 = 50;
-	
-	printf ("(X, Y) = (%i, %i)\n", paddle_x, paddle_y);
-	fix16_t abc = fix16_from_int (-10);
-	printf ("-10 fixed = %u\n", abc);
+	paddle_x = paddle_x2 = paddle_x1 = 200;
+	paddle_y = paddle_y2 = paddle_y1 = 120;
 	
 	while (aptMainLoop () && !done) {
 		//Wait for VBlank
@@ -274,13 +271,6 @@ void game_loop (void) {
 		
 		if (keys & KEY_START) {
 			done = 1;
-		}
-		
-		if (keys & KEY_A) {
-			first_puffle->frame = puffle_frames [first_puffle->frame][PUFFLE_BOUNCE];
-			first_puffle->y_fixed = 0;
-		} else if (keys & KEY_B) {
-			first_puffle->y_fixed = (12 << 8);
 		}
 		
 		if (count >= goal) {
@@ -346,6 +336,42 @@ void game_loop (void) {
 		//printf ("Touch: %i, %i\n", touch.px, touch.py);
 		//printf ("Diferencial: %i, %i\n", (handposx1 - handposx2), (handposy1 - handposy2));
 		
+		thispuffle = first_puffle;
+		do {
+			if (thispuffle->y > 290) {
+				/* Este puffle está perdido */
+				n_puffles--;
+				dropped_puffles++;
+				
+				if (n_puffles > 4) {
+					goal = default_goal;
+				} else if (n_puffles >= most_puffles) {
+					goal = n_puffles * 20;
+				} else {
+					goal = n_puffles * 10;
+				}
+				
+				if (thispuffle->prev != NULL) {
+					thispuffle = thispuffle->prev;
+					eliminar_puffle (thispuffle->next);
+				} else {
+					eliminar_puffle (thispuffle);
+					thispuffle = first_puffle;
+				}
+			}
+			if (thispuffle != NULL) thispuffle = thispuffle->next;
+		} while (thispuffle != NULL);
+		
+		if (first_puffle == NULL) {
+			//done = GAME_CONTINUE;
+			done = 1;
+			/*tickets = bounces + most_puffles * role;
+			*ret_tickets = tickets;
+			*ret_bounces = bounces;
+			*ret_most = most_puffles;
+			*ret_role = role;*/
+			break;
+		}
 		
 		gfxDrawSprite (GFX_TOP, GFX_LEFT, (u8*)normal_bgr, 240, 400, 0, 0);
 		
@@ -466,6 +492,12 @@ void game_loop (void) {
 			if (thispuffle != NULL) thispuffle = thispuffle->next;
 		} while (thispuffle != NULL);
 		
+		/* TODO: Dibujar aquí la cantidad de Tickets */
+		paddle_frame = paddle_frames[paddle_frame][PADDLE_NORMAL];
+		
+		//printf ("Paddle: %i, %i\n", paddle_x, paddle_y);
+		gfxDrawTransSprite (GFX_TOP, GFX_LEFT, (u8 *) paddle_images[paddle_outputs [paddle_frame]], 141, 64, 240 - (paddle_y - 39) - 141, paddle_x - 32);
+		
 		thispuffle = first_puffle;
 		do {
 			if (thispuffle->y > -100) {
@@ -475,9 +507,6 @@ void game_loop (void) {
 			
 			if (thispuffle != NULL) thispuffle = thispuffle->next;
 		} while (thispuffle != NULL);
-		
-		//printf ("Paddle: %i, %i\n", paddle_x, paddle_y);
-		gfxDrawTransSprite (GFX_TOP, GFX_LEFT, (u8 *) paddle_bgra, 141, 64, 240 - (paddle_y - 39) - 141, paddle_x - 32);
 		
 		gfxFlushBuffers();
 		gfxSwapBuffers();
@@ -552,6 +581,11 @@ void setup (void) {
 	for (g = 0; g < 8; g++) {
 		puffles_images[9][g] = (u8 *) brown_bgra + 36848 * g;
 	}
+	
+	/* Para el paddle */
+	for (g = 0; g < 4; g++) {
+		paddle_images[g] = (u8 *) paddle_bgra + 36096 * g;
+	}
 }
 
 void nuevo_puffle (void) {
@@ -566,7 +600,7 @@ void nuevo_puffle (void) {
 	new->x_fixed = new->y_fixed = new->pop_num = 0;
 	
 	new->y = -40;
-	new->x = 20;// + (int) (720.0 * rand () / (RAND_MAX + 1.0));
+	new->x = 20 + (int) (360.0 * rand () / (RAND_MAX + 1.0));
 	
 	/* Ahora sus campos para lista doble ligada */
 	new->next = NULL;
@@ -581,5 +615,27 @@ void nuevo_puffle (void) {
 	
 	/* Background, dame un "more" */
 	//background_frame = background_frames [background_frame][BACKGROUND_NEW];
+	//whole_flip = 1;
+}
+
+void eliminar_puffle (Puffle *p) {
+	if (p == NULL) return;
+	
+	if (p->prev == NULL) { /* El primero de la lista */
+		first_puffle = p->next;
+	} else {
+		p->prev->next = p->next;
+	}
+	
+	if (p->next == NULL) {
+		last_puffle = p->prev;
+	} else {
+		p->next->prev = p->prev;
+	}
+	
+	free (p);
+	
+	/* Background, dame un "miss" */
+	//background_frame = background_frames [background_frame][BACKGROUND_FAIL];
 	//whole_flip = 1;
 }
