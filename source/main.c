@@ -27,6 +27,16 @@
 
 #include "normal_bgr.h"
 #include "blue_bgra.h"
+#include "pink_bgra.h"
+#include "black_bgra.h"
+#include "green_bgra.h"
+#include "purple_bgra.h"
+#include "red_bgra.h"
+#include "yellow_bgra.h"
+#include "white_bgra.h"
+#include "orange_bgra.h"
+#include "brown_bgra.h"
+
 #include "paddle_bgra.h"
 
 #define FPS (268123480/4)
@@ -141,7 +151,7 @@ void nuevo_puffle (void);
 Puffle *first_puffle = NULL;
 Puffle *last_puffle = NULL;
 
-u8 *puffles_images[8];
+u8 *puffles_images[10][8];
 u8 *paddle_images[8];
 
 void gfxDrawSprite (gfxScreen_t screen, gfx3dSide_t side, u8* spriteData, u16 width, u16 height, s16 x, s16 y) {
@@ -458,12 +468,10 @@ void game_loop (void) {
 		
 		thispuffle = first_puffle;
 		do {
-			//if (thispuffle->y > -100) {
+			if (thispuffle->y > -100) {
 				/* Blit this puffle */
-				gfxDrawTransSprite (GFX_TOP, GFX_LEFT, (u8*) puffles_images [puffle_outputs [thispuffle->frame]], 94, 98, 240 - (thispuffle->y - 60) - 94, thispuffle->x - 48);
-				//gfxDrawTransSprite (GFX_TOP, GFX_LEFT, (u8*) puffles_images [puffle_outputs [thispuffle->frame]], 94, 98, 0, 100);
-				//add_rect (&puf_pos);
-			//}
+				gfxDrawTransSprite (GFX_TOP, GFX_LEFT, (u8*) puffles_images [thispuffle->color][puffle_outputs [thispuffle->frame]], 94, 98, 240 - (thispuffle->y - 60) - 94, thispuffle->x - 48);
+			}
 			
 			if (thispuffle != NULL) thispuffle = thispuffle->next;
 		} while (thispuffle != NULL);
@@ -506,7 +514,43 @@ void setup (void) {
 	
 	/* Primero para el puffle azul */
 	for (g = 0; g < 8; g++) {
-		puffles_images[g] = (u8 *) blue_bgra + 36848 * g;
+		puffles_images[0][g] = (u8 *) blue_bgra + 36848 * g;
+	}
+	
+	for (g = 0; g < 8; g++) {
+		puffles_images[1][g] = (u8 *) pink_bgra + 36848 * g;
+	}
+	
+	for (g = 0; g < 8; g++) {
+		puffles_images[2][g] = (u8 *) black_bgra + 36848 * g;
+	}
+	
+	for (g = 0; g < 8; g++) {
+		puffles_images[3][g] = (u8 *) green_bgra + 36848 * g;
+	}
+	
+	for (g = 0; g < 8; g++) {
+		puffles_images[4][g] = (u8 *) purple_bgra + 36848 * g;
+	}
+	
+	for (g = 0; g < 8; g++) {
+		puffles_images[5][g] = (u8 *) red_bgra + 36848 * g;
+	}
+	
+	for (g = 0; g < 8; g++) {
+		puffles_images[6][g] = (u8 *) yellow_bgra + 36848 * g;
+	}
+	
+	for (g = 0; g < 8; g++) {
+		puffles_images[7][g] = (u8 *) white_bgra + 36848 * g;
+	}
+	
+	for (g = 0; g < 8; g++) {
+		puffles_images[8][g] = (u8 *) orange_bgra + 36848 * g;
+	}
+	
+	for (g = 0; g < 8; g++) {
+		puffles_images[9][g] = (u8 *) brown_bgra + 36848 * g;
 	}
 }
 
