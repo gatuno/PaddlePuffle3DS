@@ -29,6 +29,8 @@
 #include "blue_bgra.h"
 #include "paddle_bgra.h"
 
+#define FPS (268123480/4)
+
 /* Autómata para un puffle */
 enum {
 	PUFFLE_NORMAL = 0,
@@ -227,7 +229,6 @@ void game_loop (void) {
 	int done = 0;
 	Puffle *thispuffle;
 	
-	int handposx2, handposx1, handposx, handposy2, handposy1, handposy; /* Para calcular los desplazamientos del mouse */
 	int fuerzax, fuerzay; /* Calculos de fuerza al golpear el puffle */
 	int g, h;
 	
@@ -238,29 +239,26 @@ void game_loop (void) {
 	int count = 0, goal = 20, default_goal = 20; /* Para control de la generación de próximos puffles */
 	int bounces = 0, role = 0; /* Bounces, golpes totales. Role, el mayor número de golpes */
 	int paddle_x, paddle_y, paddle_frame = 0;
+	int paddle_x2, paddle_x1, paddle_y2, paddle_y1; /* Para calcular los desplazamientos del paddle */
 	int tickets = 0;
+	u64 last_time, now_time;
 	
 	u32 keys;
-	touchPosition touch;
+	touchPosition touch, touch1;
 	nuevo_puffle ();
 	
-	paddle_x = handposx2 = handposx1 = handposx = 50;
-	paddle_y = handposy2 = handposy1 = handposy = 50;
+	paddle_x = paddle_x2 = paddle_x1 = 50;
+	paddle_y = paddle_y2 = paddle_y1 = 50;
 	
 	printf ("(X, Y) = (%i, %i)\n", paddle_x, paddle_y);
 	fix16_t abc = fix16_from_int (-10);
 	printf ("-10 fixed = %u\n", abc);
 	
-	aptOpenSession();
-	// Result ret=APT_SetAppCpuTimeLimit(NULL, 30);
-	Result ret=APT_SetAppCpuTimeLimit(NULL, 5);
-	aptCloseSession();
-	printf ("%08X\n",(unsigned int)ret);
-	
 	while (aptMainLoop () && !done) {
 		//Wait for VBlank
 		gspWaitForVBlank();
 		
+		last_time = svcGetSystemTick ();
 		hidScanInput ();
 		keys = hidKeysDown ();
 		
@@ -303,19 +301,30 @@ void game_loop (void) {
 			nuevo_puffle ();
 		}
 		
-		handposy2 = handposy1;
-		handposy1 = handposy;
+		paddle_y2 = paddle_y1;
+		paddle_y1 = paddle_y;
 		
-		handposx2 = handposx1;
-		handposx1 = handposx;
+		paddle_x2 = paddle_x1;
+		paddle_x1 = paddle_x;
+		
+		touch1 = touch;
 		
 		hidTouchRead(&touch);
 		if (touch.px != 0 && touch.py != 0) {
-			handposx = touch.px;
-			handposy = touch.py;
+			if (keys & KEY_TOUCH) {
+				touch1 = touch;
+			}
+			
+			paddle_x += (touch.px - touch1.px);
+			paddle_y += (touch.py - touch1.py);
 		}
 		
-		fuerzay = handposy2 - handposy;
+		if (paddle_x < 0) paddle_x = 0;
+		if (paddle_y < -30) paddle_y = -30;
+		if (paddle_x > 400) paddle_x = 400;
+		if (paddle_y > 220) paddle_y = 220;
+		
+		fuerzay = paddle_y2 - paddle_y;
 		
 		if (fuerzay > 0) {
 			poder = fix16_div (fuerzay << 16, (6 << 16));
@@ -323,18 +332,10 @@ void game_loop (void) {
 			poder = 0;
 		}
 	
-		fuerzax = handposx2 - handposx;
+		fuerzax = paddle_x2 - paddle_x;
 		//printf ("Touch: %i, %i\n", touch.px, touch.py);
 		//printf ("Diferencial: %i, %i\n", (handposx1 - handposx2), (handposy1 - handposy2));
-		if ((keys & KEY_TOUCH) == 0) {
-			paddle_x += (handposx - handposx1);
-			paddle_y += (handposy - handposy1);
-		}
 		
-		if (paddle_x < 0) paddle_x = 0;
-		if (paddle_y < -30) paddle_y = -30;
-		if (paddle_x > 400) paddle_x = 400;
-		if (paddle_y > 220) paddle_y = 220;
 		
 		gfxDrawSprite (GFX_TOP, GFX_LEFT, (u8*)normal_bgr, 240, 400, 0, 0);
 		
@@ -365,14 +366,31 @@ void game_loop (void) {
 			
 			h = fix16_to_int (thispuffle->y_fixed);
 			if (thispuffle->y > -99 && h >= 0) {
-				if ((thispuffle->x > handposx - 39 && thispuffle->x < handposx + 39) && ((thispuffle->y + 30 > handposy && thispuffle->y + 30 < handposy + 100) || (thispuffle->y > handposy && thispuffle->y < handposy2))) {
+				//printf ("El puffle está cayendo, por lo tanto es golpeable\n");
+				#if 0
+				for (g = 0; g < 240; g++) {
+					gfxDrawPixel (GFX_TOP, GFX_LEFT, g, paddle_x2, 0, 255, 255); /* Cyan */
+					gfxDrawPixel (GFX_TOP, GFX_LEFT, g, paddle_x, 255, 255, 0); /* Amarillo */
+					gfxDrawPixel (GFX_TOP, GFX_LEFT, g, thispuffle->x, 255, 0, 0); /* Rojo */
+					gfxDrawPixel (GFX_TOP, GFX_LEFT, g, paddle_x - 39, 0, 255, 0); /* Verde */
+					gfxDrawPixel (GFX_TOP, GFX_LEFT, g, paddle_x + 39, 0, 255, 0);
+				}
+				for (g = 0; g < 400; g++) {
+					gfxDrawPixel (GFX_TOP, GFX_LEFT, 240 - paddle_y2, g, 0, 255, 255);
+					gfxDrawPixel (GFX_TOP, GFX_LEFT, 240 - paddle_y, g, 255, 255, 0);
+					gfxDrawPixel (GFX_TOP, GFX_LEFT, 240 - thispuffle->y, g, 255, 0, 0);
+					gfxDrawPixel (GFX_TOP, GFX_LEFT, 240 - (thispuffle->y + 30), g, 143, 0, 255);
+					gfxDrawPixel (GFX_TOP, GFX_LEFT, 240 - (paddle_y + 55), g, 0, 0, 255);
+				}
+				#endif
+				if ((thispuffle->x > paddle_x - 39 && thispuffle->x < paddle_x + 39) && ((thispuffle->y + 30 > paddle_y && thispuffle->y + 30 < paddle_y + 55) || (thispuffle->y > paddle_y && thispuffle->y < paddle_y2))) {
 					/* Bounce the puffle */
 					/* sonido = SND_SQUEAK1 + (int) (2.0 * rand () / (RAND_MAX + 1.0));
 					
 					if (fuerzax > 300 || fuerzax < -300 || poder > 30) {
 						sonido = SND_SQUEAK3;
 					}*/
-					g = thispuffle->x - (handposx + fuerzax);
+					g = thispuffle->x - (paddle_x + fuerzax);
 					thispuffle->x_fixed = fix16_div (g << 16, balance);
 					thispuffle->y_fixed = fix16_mul (-1 << 16, fix16_add (speed, poder));
 					
@@ -394,7 +412,7 @@ void game_loop (void) {
 					//if (use_sound) Mix_PlayChannel (-1, sounds[sonido], 0);
 					
 					tickets = bounces + most_puffles * role;
-				} else if ((thispuffle->y + 30 > handposy && thispuffle->y + 30 < handposy + 100) && ((thispuffle->x > handposx && thispuffle->x < handposx2) || (thispuffle->x < handposx && thispuffle->x > handposx2))) {
+				} else if ((thispuffle->y + 30 > paddle_y && thispuffle->y + 30 < paddle_y + 55) && ((thispuffle->x > paddle_x && thispuffle->x < paddle_x2) || (thispuffle->x < paddle_x && thispuffle->x > paddle_x2))) {
 					/* Bounce the puffle */
 					/*sonido = SND_SQUEAK1 + (int) (2.0 * rand () / (RAND_MAX + 1.0));
 					
@@ -402,7 +420,7 @@ void game_loop (void) {
 						sonido = SND_SQUEAK3;
 					}*/
 					
-					g = thispuffle->x - (handposx + fuerzax);
+					g = thispuffle->x - (paddle_x + fuerzax);
 					thispuffle->x_fixed = fix16_div (g << 16, balance);
 					thispuffle->y_fixed = fix16_mul (-1 << 16, fix16_add (speed, poder));
 					
@@ -452,10 +470,12 @@ void game_loop (void) {
 		
 		//printf ("Paddle: %i, %i\n", paddle_x, paddle_y);
 		gfxDrawTransSprite (GFX_TOP, GFX_LEFT, (u8 *) paddle_bgra, 141, 64, 240 - (paddle_y - 39) - 141, paddle_x - 32);
+		
 		gfxFlushBuffers();
 		gfxSwapBuffers();
-		// svcGetSystemTick
-		svcSleepThread(10000000);
+		
+		now_time = svcGetSystemTick ();
+		if (now_time < last_time + FPS) svcSleepThread (last_time + FPS - now_time);
 	}
 }
 
@@ -480,6 +500,7 @@ void setup (void) {
 	hidInit(NULL);
 	gfxInitDefault();
 	gfxSet3D(0);
+	//gfxSetDoubleBuffering (GFX_TOP, 0);
 	
 	consoleInit(GFX_BOTTOM, NULL);
 	
