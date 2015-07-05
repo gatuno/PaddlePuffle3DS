@@ -26,6 +26,11 @@
 #include "fix16.h"
 
 #include "normal_bgr.h"
+#include "new_0_bgr.h"
+#include "new_1_bgr.h"
+#include "fail_0_bgr.h"
+#include "fail_1_bgr.h"
+
 #include "blue_bgra.h"
 #include "pink_bgra.h"
 #include "black_bgra.h"
@@ -39,7 +44,58 @@
 
 #include "paddle_bgra.h"
 
-#define FPS (268123480/4)
+#define FPS (268123480/12)
+
+/* Entrada 0 significa normal, 1 nuevo, 2 perdido */
+enum {
+	BACKGROUND_NORMAL = 0,
+	BACKGROUND_NEW,
+	BACKGROUND_FAIL
+};
+
+/* Autómata para el fondo */
+static int background_frames[15][3] = {
+	{0, 1, 8},
+	{2, 1, 8},
+	{3, 1, 8},
+	{4, 1, 8},
+	{5, 1, 8},
+	{6, 1, 8},
+	{7, 1, 8},
+	{0, 1, 8},
+	{9, 1, 8},
+	{10, 1, 8},
+	{11, 1, 8},
+	{12, 1, 8},
+	{13, 1, 8},
+	{14, 1, 8}
+};
+
+enum {
+	IMG_BACKGROUND_NORMAL = 0,
+	IMG_BACKGROUND_NEW_0,
+	IMG_BACKGROUND_NEW_1,
+	IMG_BACKGROUND_FAIL_0,
+	IMG_BACKGROUND_FAIL_1
+};
+
+static int background_outputs[15] = {
+	IMG_BACKGROUND_NORMAL,
+	IMG_BACKGROUND_NEW_0,
+	IMG_BACKGROUND_NEW_0,
+	IMG_BACKGROUND_NEW_0,
+	IMG_BACKGROUND_NEW_0,
+	IMG_BACKGROUND_NEW_1,
+	IMG_BACKGROUND_NEW_1,
+	IMG_BACKGROUND_NEW_1,
+	IMG_BACKGROUND_FAIL_0,
+	IMG_BACKGROUND_FAIL_0,
+	IMG_BACKGROUND_FAIL_0,
+	IMG_BACKGROUND_FAIL_0,
+	IMG_BACKGROUND_FAIL_1,
+	IMG_BACKGROUND_FAIL_1,
+	IMG_BACKGROUND_FAIL_1
+};
 
 /* Autómata para un puffle */
 enum {
@@ -154,6 +210,9 @@ Puffle *last_puffle = NULL;
 
 u8 *puffles_images[10][8];
 u8 *paddle_images[4];
+u8 *background_images[5];
+
+int background_frame = 0;
 
 void gfxDrawSprite (gfxScreen_t screen, gfx3dSide_t side, u8* spriteData, u16 width, u16 height, s16 x, s16 y) {
 	if (!spriteData) return;
@@ -246,6 +305,7 @@ void game_loop (void) {
 	fix16_t poder;
 	fix16_t speed = 0xA0000; /* 10 = (10 << 16) */
 	fix16_t balance = 0x40000; /* 4 = (4 << 16) */
+	int wind = 1, wind_countdown = 240; /* Para evitar puffles estancados verticalmente */
 	int n_puffles = 1, most_puffles = 1, dropped_puffles = 0; /* Llevar la cantidad de puffles */
 	int count = 0, goal = 20, default_goal = 20; /* Para control de la generación de próximos puffles */
 	int bounces = 0, role = 0; /* Bounces, golpes totales. Role, el mayor número de golpes */
@@ -257,6 +317,7 @@ void game_loop (void) {
 	u32 keys;
 	touchPosition touch, touch1;
 	nuevo_puffle ();
+	background_frame = 0;
 	
 	paddle_x = paddle_x2 = paddle_x1 = 200;
 	paddle_y = paddle_y2 = paddle_y1 = 120;
@@ -373,7 +434,8 @@ void game_loop (void) {
 			break;
 		}
 		
-		gfxDrawSprite (GFX_TOP, GFX_LEFT, (u8*)normal_bgr, 240, 400, 0, 0);
+		background_frame = background_frames [background_frame][BACKGROUND_NORMAL];
+		gfxDrawSprite (GFX_TOP, GFX_LEFT, background_images[background_outputs[background_frame]], 240, 400, 0, 0);
 		
 		thispuffle = first_puffle;
 		do {
@@ -383,9 +445,9 @@ void game_loop (void) {
 			thispuffle->x = thispuffle->x + g;
 			thispuffle->y = thispuffle->y + h;
 			
-			if (thispuffle->x >= 378 && g >= 0) {
+			if (thispuffle->x >= 360 && g >= 0) {
 				thispuffle->x_fixed = fix16_mul (thispuffle->x_fixed, 0xFFFF0000); /* -1 */
-			} else if (thispuffle->x <= 22 && g < 0) {
+			} else if (thispuffle->x <= 40 && g < 0) {
 				thispuffle->x_fixed = fix16_mul (thispuffle->x_fixed, 0xFFFF0000); /* -1 */
 			}
 			
@@ -400,25 +462,22 @@ void game_loop (void) {
 				thispuffle->x_fixed = fix16_mul (thispuffle->x_fixed, 62259); /* 0.95 */
 			}
 			
+			/* Si tiene un score (alias bounces) mayor a 50, aplicar un poco de viento */
+			if (bounces > 50) { /* Bounces ajustado a 25, valor original 50 */
+				if (wind) thispuffle->x_fixed = fix16_add (thispuffle->x_fixed, 6554); /* 0.1 aprox */
+				else thispuffle->x_fixed = fix16_sub (thispuffle->x_fixed, 6554); /* 0.1 aprox */
+				
+				if (wind_countdown > 0) wind_countdown--;
+			}
+			
+			if (wind_countdown == 0) {
+				if (wind) wind = 0;
+				else wind = 1;
+				wind_countdown = 240;
+			}
+			
 			h = fix16_to_int (thispuffle->y_fixed);
 			if (thispuffle->y > -99 && h >= 0) {
-				//printf ("El puffle está cayendo, por lo tanto es golpeable\n");
-				#if 0
-				for (g = 0; g < 240; g++) {
-					gfxDrawPixel (GFX_TOP, GFX_LEFT, g, paddle_x2, 0, 255, 255); /* Cyan */
-					gfxDrawPixel (GFX_TOP, GFX_LEFT, g, paddle_x, 255, 255, 0); /* Amarillo */
-					gfxDrawPixel (GFX_TOP, GFX_LEFT, g, thispuffle->x, 255, 0, 0); /* Rojo */
-					gfxDrawPixel (GFX_TOP, GFX_LEFT, g, paddle_x - 39, 0, 255, 0); /* Verde */
-					gfxDrawPixel (GFX_TOP, GFX_LEFT, g, paddle_x + 39, 0, 255, 0);
-				}
-				for (g = 0; g < 400; g++) {
-					gfxDrawPixel (GFX_TOP, GFX_LEFT, 240 - paddle_y2, g, 0, 255, 255);
-					gfxDrawPixel (GFX_TOP, GFX_LEFT, 240 - paddle_y, g, 255, 255, 0);
-					gfxDrawPixel (GFX_TOP, GFX_LEFT, 240 - thispuffle->y, g, 255, 0, 0);
-					gfxDrawPixel (GFX_TOP, GFX_LEFT, 240 - (thispuffle->y + 30), g, 143, 0, 255);
-					gfxDrawPixel (GFX_TOP, GFX_LEFT, 240 - (paddle_y + 55), g, 0, 0, 255);
-				}
-				#endif
 				if ((thispuffle->x > paddle_x - 39 && thispuffle->x < paddle_x + 39) && ((thispuffle->y + 30 > paddle_y && thispuffle->y + 30 < paddle_y + 55) || (thispuffle->y > paddle_y && thispuffle->y < paddle_y2))) {
 					/* Bounce the puffle */
 					/* sonido = SND_SQUEAK1 + (int) (2.0 * rand () / (RAND_MAX + 1.0));
@@ -428,7 +487,7 @@ void game_loop (void) {
 					}*/
 					g = thispuffle->x - (paddle_x + fuerzax);
 					thispuffle->x_fixed = fix16_div (g << 16, balance);
-					thispuffle->y_fixed = fix16_mul (-1 << 16, fix16_add (speed, poder));
+					thispuffle->y_fixed = fix16_mul (4294914867u, fix16_add (speed, poder)); /* -0.8 */
 					
 					bounces++; count++;
 					
@@ -458,7 +517,7 @@ void game_loop (void) {
 					
 					g = thispuffle->x - (paddle_x + fuerzax);
 					thispuffle->x_fixed = fix16_div (g << 16, balance);
-					thispuffle->y_fixed = fix16_mul (-1 << 16, fix16_add (speed, poder));
+					thispuffle->y_fixed = fix16_mul (4294914867u, fix16_add (speed, poder)); /* -0.8 */
 					
 					bounces++; count++;
 					
@@ -481,10 +540,8 @@ void game_loop (void) {
 				}
 			}
 			
-			//printf ("Actualizando a: %i, %i\n", thispuffle->x, thispuffle->y);
 			h = fix16_to_int (thispuffle->y_fixed);
 			if (h > 10) {
-				//printf ("El puffle esta cayendo\n");
 				thispuffle->frame = puffle_frames [thispuffle->frame][PUFFLE_FALL];
 			}
 			
@@ -495,7 +552,6 @@ void game_loop (void) {
 		/* TODO: Dibujar aquí la cantidad de Tickets */
 		paddle_frame = paddle_frames[paddle_frame][PADDLE_NORMAL];
 		
-		//printf ("Paddle: %i, %i\n", paddle_x, paddle_y);
 		gfxDrawTransSprite (GFX_TOP, GFX_LEFT, (u8 *) paddle_images[paddle_outputs [paddle_frame]], 141, 64, 240 - (paddle_y - 39) - 141, paddle_x - 32);
 		
 		thispuffle = first_puffle;
@@ -586,6 +642,12 @@ void setup (void) {
 	for (g = 0; g < 4; g++) {
 		paddle_images[g] = (u8 *) paddle_bgra + 36096 * g;
 	}
+	
+	background_images[0] = (u8 *) normal_bgr;
+	background_images[1] = (u8 *) new_0_bgr;
+	background_images[2] = (u8 *) new_1_bgr;
+	background_images[3] = (u8 *) fail_0_bgr;
+	background_images[4] = (u8 *) fail_1_bgr;
 }
 
 void nuevo_puffle (void) {
@@ -614,7 +676,7 @@ void nuevo_puffle (void) {
 	}
 	
 	/* Background, dame un "more" */
-	//background_frame = background_frames [background_frame][BACKGROUND_NEW];
+	background_frame = background_frames [background_frame][BACKGROUND_NEW];
 	//whole_flip = 1;
 }
 
@@ -636,6 +698,6 @@ void eliminar_puffle (Puffle *p) {
 	free (p);
 	
 	/* Background, dame un "miss" */
-	//background_frame = background_frames [background_frame][BACKGROUND_FAIL];
+	background_frame = background_frames [background_frame][BACKGROUND_FAIL];
 	//whole_flip = 1;
 }
