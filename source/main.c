@@ -44,6 +44,10 @@
 
 #include "paddle_bgra.h"
 
+#include "opening_bgr.h"
+#include "paddle_fondo_bgra.h"
+#include "boton_ui_bgra.h"
+
 #define FPS (268123480/12)
 
 /* Entrada 0 significa normal, 1 nuevo, 2 perdido */
@@ -186,6 +190,13 @@ static int paddle_outputs [5] = {
 	IMG_PADDLE_4
 };
 
+/* Codigos de salida */
+enum {
+	GAME_NONE = 0, /* No usado */
+	GAME_CONTINUE,
+	GAME_QUIT
+};
+
 /* La estructura principal de un puffle */
 typedef struct _Puffle {
 	struct _Puffle *next;
@@ -214,7 +225,7 @@ u8 *background_images[5];
 
 int background_frame = 0;
 
-void gfxDrawSprite (gfxScreen_t screen, gfx3dSide_t side, u8* spriteData, u16 width, u16 height, s16 x, s16 y) {
+void gfxDrawSprite (gfxScreen_t screen, gfx3dSide_t side, const u8* spriteData, u16 width, u16 height, s16 x, s16 y) {
 	if (!spriteData) return;
 
 	u16 fbWidth, fbHeight;
@@ -240,7 +251,7 @@ void gfxDrawSprite (gfxScreen_t screen, gfx3dSide_t side, u8* spriteData, u16 wi
 	}
 }
 
-void gfxDrawTransSprite (gfxScreen_t screen, gfx3dSide_t side, u8* spriteData, u16 width, u16 height, s16 x, s16 y) {
+void gfxDrawTransSprite (gfxScreen_t screen, gfx3dSide_t side, const u8* spriteData, u16 width, u16 height, s16 x, s16 y) {
 	if (!spriteData) return;
 
 	u16 fbWidth, fbHeight;
@@ -266,7 +277,7 @@ void gfxDrawTransSprite (gfxScreen_t screen, gfx3dSide_t side, u8* spriteData, u
 	u8 alpha;
 	for (j = yOffset; j < yOffset + heightDrawn; j++) {
 		u8* fbd = &fbAdr[(x+xOffset) * 3];
-		u8* data = &spriteData[(xOffset) * 4]; /* La imagen es ABGR */
+		const u8* data = &spriteData[(xOffset) * 4]; /* La imagen es ABGR */
 		for (i = xOffset; i < xOffset + widthDrawn; i++, fbd += 3, data += 4) {
 			alpha = data[3];
 			if (alpha == 0) continue; /* 255 = Opaco, 0 = Trans */
@@ -295,7 +306,45 @@ void gfxDrawPixel (gfxScreen_t screen, gfx3dSide_t side, s16 x, s16 y, u8 r, u8 
 	fbd[2] = r;
 }
 
-void game_loop (void) {
+int game_intro (void) {
+	int done = 0;
+	
+	u32 keys;
+	touchPosition touch;
+	
+	while (aptMainLoop () && !done) {
+		hidScanInput ();
+		keys = hidKeysDown ();
+		
+		if (keys & KEY_START) {
+			done = GAME_QUIT;
+		}
+		
+		hidTouchRead(&touch);
+		if (keys & KEY_TOUCH && touch.px > 83 && touch.px < 247 && touch.py > 179 && touch.py < 227) {
+			done = GAME_CONTINUE;
+		}
+		
+		/* Dibujar la parte superior */
+		gfxDrawSprite (GFX_TOP, GFX_LEFT, normal_bgr, 240, 400, 0, 0);
+		
+		/* Dibujar la parte inferior de la pantalla */
+		gfxDrawSprite (GFX_BOTTOM, GFX_LEFT, opening_bgr, 240, 320, 0, 0);
+		
+		/* Dibujar el botón de jugar */
+		gfxDrawTransSprite (GFX_BOTTOM, GFX_LEFT, boton_ui_bgra, 48, 164, 18, 78);
+		
+		//Wait for VBlank
+		gspWaitForVBlank();
+		
+		gfxFlushBuffers();
+		gfxSwapBuffers();
+	}
+	
+	return done;
+}
+
+int game_loop (void) {
 	int done = 0;
 	Puffle *thispuffle;
 	
@@ -323,15 +372,12 @@ void game_loop (void) {
 	paddle_y = paddle_y2 = paddle_y1 = 120;
 	
 	while (aptMainLoop () && !done) {
-		//Wait for VBlank
-		gspWaitForVBlank();
-		
 		last_time = svcGetSystemTick ();
 		hidScanInput ();
 		keys = hidKeysDown ();
 		
 		if (keys & KEY_START) {
-			done = 1;
+			done = GAME_QUIT;
 		}
 		
 		if (count >= goal) {
@@ -424,8 +470,7 @@ void game_loop (void) {
 		} while (thispuffle != NULL);
 		
 		if (first_puffle == NULL) {
-			//done = GAME_CONTINUE;
-			done = 1;
+			done = GAME_CONTINUE;
 			/*tickets = bounces + most_puffles * role;
 			*ret_tickets = tickets;
 			*ret_bounces = bounces;
@@ -433,6 +478,10 @@ void game_loop (void) {
 			*ret_role = role;*/
 			break;
 		}
+		
+		/* Dibujar la parte inferior de la pantalla */
+		gfxDrawSprite (GFX_BOTTOM, GFX_LEFT, opening_bgr, 240, 320, 0, 0);
+		gfxDrawTransSprite (GFX_BOTTOM, GFX_LEFT, paddle_fondo_bgra, 172, 194, 26, 63);
 		
 		background_frame = background_frames [background_frame][BACKGROUND_NORMAL];
 		gfxDrawSprite (GFX_TOP, GFX_LEFT, background_images[background_outputs[background_frame]], 240, 400, 0, 0);
@@ -564,19 +613,27 @@ void game_loop (void) {
 			if (thispuffle != NULL) thispuffle = thispuffle->next;
 		} while (thispuffle != NULL);
 		
+		//Wait for VBlank
+		gspWaitForVBlank();
+		
 		gfxFlushBuffers();
 		gfxSwapBuffers();
 		
 		now_time = svcGetSystemTick ();
 		if (now_time < last_time + FPS) svcSleepThread (last_time + FPS - now_time);
 	}
+	
+	return done;
 }
 
 int main (void) {
 	
 	setup ();
 	
-	game_loop ();
+	do {
+		if (game_intro () == GAME_QUIT) break;
+		if (game_loop () == GAME_QUIT) break;
+	} while (1 == 0);
 	
 	gfxExit();
 	hidExit();
@@ -593,9 +650,9 @@ void setup (void) {
 	hidInit(NULL);
 	gfxInitDefault();
 	gfxSet3D(0);
-	//gfxSetDoubleBuffering (GFX_TOP, 0);
+	gfxSetDoubleBuffering (GFX_BOTTOM, 1);
 	
-	consoleInit(GFX_BOTTOM, NULL);
+	//consoleInit(GFX_BOTTOM, NULL);
 	
 	/* Primero para el puffle azul */
 	for (g = 0; g < 8; g++) {
